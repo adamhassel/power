@@ -1,6 +1,6 @@
 package entities
 
-// Tariff is a flattened version of a tariff from eloverblik
+// Tariff is a flattened version of a tariff from eloverblik.dk
 type Tariff struct {
 	TariffId      interface{} `json:"tariffId"`
 	Name          string      `json:"name"`
@@ -58,13 +58,13 @@ func (ts Taxes) Total() float64 {
 	return rv
 }
 
-// AtPos returns the Tariff at index p, if it exists. Otherwise returns at the default position (0)
+// AtPos returns the Tariff at index p, if it exists. Otherwise, returns from the default position (0)
 func (t TariffIndex) AtPos(p int) Tariffs {
 	if v, ok := t[p]; ok {
-		return Tariffs(v)
+		return v
 	}
 	if v, ok := t[0]; ok {
-		return Tariffs(v)
+		return v
 	}
 	return nil
 }

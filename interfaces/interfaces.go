@@ -1,3 +1,6 @@
+// Package interfaces defines a bunch of interfaces for passing abstracted data
+// around. It's probably a bit overkill considering the limited functionality of
+// the code so far, so it may go away at some point...
 package interfaces
 
 import "github.com/adamhassel/power/entities"

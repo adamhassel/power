@@ -18,8 +18,10 @@ const queryTemplate = `{"operationName":"Dataset","variables":{},"query":"query 
 type area string
 
 const (
-	areaDKWest area = "DK1"
-	areaDKEast area = "DK2"
+	// AreaDKWest is for anyone living west of Storebælt
+	AreaDKWest area = "DK1"
+	// AreaDKEast is for anyone living east of Storebælt
+	AreaDKEast area = "DK2"
 )
 
 const (
@@ -44,9 +46,13 @@ func (p Prices) SpotPrices() []entities.Elspotprice {
 	return p.Data.Elspotprices
 }
 
+func (e *EnergiDataService) Area(a area) {
+	e.area = a
+}
+
 func (e *EnergiDataService) Timer(from, to time.Time) {
-	e.from = from
-	e.to = to
+	e.from = from.Truncate(time.Hour)
+	e.to = to.Truncate(time.Hour)
 }
 
 func (e *EnergiDataService) Query() (interface{}, error) {
@@ -57,21 +63,21 @@ func (e *EnergiDataService) Query() (interface{}, error) {
 	if e.to.IsZero() || e.to.Before(e.from) {
 		e.to = e.from.Add(12 * time.Hour)
 	}
-	if err := e.p.query(e.from, e.to); err != nil {
+	if err := e.p.query(e.from, e.to, e.area); err != nil {
 		return nil, err
 	}
 	return e.p, nil
 }
 
-func (p *Prices) query(from, to time.Time) error {
-	if err := p.getRawSpotPrices(from, to); err != nil {
+func (p *Prices) query(from, to time.Time, a area) error {
+	if err := p.getRawSpotPrices(from, to, a); err != nil {
 		return err
 	}
-	return p.fixupDKK()
+	return p.fixupDKK(a)
 }
 
-func (p *Prices) getRawSpotPrices(from, to time.Time) error {
-	body := makeSpotPriceQuery(from, to)
+func (p *Prices) getRawSpotPrices(from, to time.Time, a area) error {
+	body := makeSpotPriceQuery(from, to, a)
 
 	resp, err := http.Post(dataServiceUrl, "application/json", bytes.NewBuffer([]byte(body)))
 	if err != nil {
@@ -94,7 +100,7 @@ func (p *Prices) getRawSpotPrices(from, to time.Time) error {
 // for any prices with only a euro price, we'll use the last record with DKK and
 // EUR from before the weekend, and derive an exchange rate from that, which
 // we'll use.
-func (p *Prices) fixupDKK() error {
+func (p *Prices) fixupDKK(a area) error {
 	// find out if there are any missing DKK..
 	var latestEUR, latestDKK float64
 	emptyDKK := false
@@ -132,7 +138,9 @@ func (p *Prices) fixupDKK() error {
 		// fetch the last price of the friday, set time to 2300 local
 		target = time.Date(target.Year(), target.Month(), target.Day(), 23, 0, 0, 0, earliest.Location())
 		var rateprice Prices
-		rateprice.getRawSpotPrices(target, target.Add(time.Hour))
+		if err := rateprice.getRawSpotPrices(target, target.Add(time.Hour), a); err != nil {
+			return err
+		}
 		if rateprice.Data.Elspotprices[0].SpotPriceDKK == nil {
 			return errors.New("DKK price was nil")
 		}
@@ -154,6 +162,9 @@ func (p *Prices) fixupDKK() error {
 	return nil
 }
 
-func makeSpotPriceQuery(start, end time.Time) string {
-	return fmt.Sprintf(queryTemplate, start.Local().Format("2006-01-02T15:04:05"), end.Local().Format("2006-01-02T15:04:05"), areaDKEast, defaultLimit, defaultOffset)
+func makeSpotPriceQuery(start, end time.Time, a area) string {
+	if a == "" {
+		a = AreaDKEast
+	}
+	return fmt.Sprintf(queryTemplate, start.Local().Format("2006-01-02T15:04:05"), end.Local().Format("2006-01-02T15:04:05"), a, defaultLimit, defaultOffset)
 }

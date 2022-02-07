@@ -13,25 +13,26 @@ import (
 	"github.com/adamhassel/power/repos/energidataservice"
 )
 
-var conffile string
-var noofhours uint
+var confFile string
+var noOfHours uint
 
 func init() {
-	flag.UintVar(&noofhours, "h", 12, "Number of hours to get price data for. Default: 12")
-	flag.StringVar(&conffile, "c", "power.conf", "location of configuration file. Default \"power.conf\"")
+	flag.UintVar(&noOfHours, "h", 12, "Number of hours to get price data for.")
+	flag.StringVar(&confFile, "c", "power.conf", "location of configuration file.")
 }
 func main() {
 	flag.Parse()
 	var conf entities.Config
-	if err := conf.Load(conffile); err != nil {
-		log.Fatal("error reading conf: %s", err)
+	if err := conf.Load(confFile); err != nil {
+		log.Fatalf("error reading conf: %s", err)
 	}
 	if conf.MID == "" || conf.Token == "" {
 		log.Fatal("MID or Token invalid")
 	}
 
 	var e energidataservice.EnergiDataService
-	e.Timer(time.Now().Truncate(time.Hour), time.Now().Truncate(time.Hour).Add(time.Duration(noofhours)*time.Hour))
+	e.Area(energidataservice.AreaDKEast)
+	e.Timer(time.Now(), time.Now().Add(time.Duration(noOfHours)*time.Hour))
 	p, err := e.Query()
 	if err != nil {
 		log.Fatal(err)
