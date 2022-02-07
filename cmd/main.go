@@ -15,10 +15,12 @@ import (
 
 var confFile string
 var noOfHours uint
+var pretty bool
 
 func init() {
 	flag.UintVar(&noOfHours, "h", 12, "Number of hours to get price data for.")
 	flag.StringVar(&confFile, "c", "power.conf", "location of configuration file.")
+	flag.BoolVar(&pretty, "p", false, "pretty-print (indent) JSON output.")
 }
 func main() {
 	flag.Parse()
@@ -51,7 +53,15 @@ func main() {
 	}
 
 	combined := power.Summarize(p.(energidataservice.Prices), ft.(eloverblik.FullTariffs))
-	output, _ := json.MarshalIndent(combined, "", "  ")
+	var output []byte
+	if pretty {
+		output, err = json.MarshalIndent(combined, "", "  ")
+	} else {
+		output, err = json.Marshal(combined)
+	}
+	if err != nil {
+		log.Fatalf("error marshalling result: %s", err)
+	}
 
-	fmt.Println(string(output))
+	fmt.Print(string(output))
 }

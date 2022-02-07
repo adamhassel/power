@@ -8,6 +8,7 @@ type FullPrice struct {
 	ValidFrom     time.Time `json:"valid_from"`
 	ValidTo       time.Time `json:"valid_to"`
 	Estimated     bool      `json:"dkk_estimated"`
+	EstimatedRate float64   `json:"rate,omitempty"`
 	RawPrice      float64   `json:"spot_price_ex_vat"`
 	TaxesSubTotal float64   `json:"taxes_subtotal_ex_vat"`
 	Total         float64   `json:"total_ex_vat"`
