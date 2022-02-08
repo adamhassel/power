@@ -34,6 +34,17 @@ Default is `power.conf`. It also accepts a `-h` option, which is the number of
 hours in the future to get prices for. The default is to get for the next 12
 hours.
 
+### Caveat
+
+On weekends, the source prices are only reported in EUR. They're then
+retroactively updated with the DKK price the following Monday, but it means
+that DKK prices, that are accurate/official, are not available during weekends.
+The code will try and compensate by extrapolating the last known exchange rate
+(from the preceeding Friday at 23:00) during weekends, and while the results
+are probably reasonably close, there's no guarantee they'll be exactly correct.
+
+Blame Nord Pool for this.
+
 ## Possible further features
 
 * Consumption summary in kWH and DKK
