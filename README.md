@@ -34,6 +34,12 @@ Default is `power.conf`. It also accepts a `-h` option, which is the number of
 hours in the future to get prices for. The default is to get for the next 12
 hours.
 
+#### Output options
+
+* `-p` Pretty print/indent JSON output.
+* `-s` Print simple data, only time period and total price per kWh.
+
+
 ### Caveat
 
 On weekends, the source prices are only reported in EUR. They're then
