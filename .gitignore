@@ -1,3 +1,6 @@
 .idea
 power.conf
 power
+powerd
+winpower
+*.json
