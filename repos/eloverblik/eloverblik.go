@@ -235,8 +235,7 @@ func getRefreshToken(token []byte) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.Status)
-		fmt.Println(string(response))
+		return "", errors.New(resp.Status)
 	}
 
 	return gjson.GetBytes(response, "result").String(), nil
