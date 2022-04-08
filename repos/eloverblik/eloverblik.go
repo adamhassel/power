@@ -2,12 +2,14 @@ package eloverblik
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/adamhassel/power/entities"
 	"github.com/tidwall/gjson"
@@ -15,12 +17,15 @@ import (
 
 const elOverblikUrl = "https://api.eloverblik.dk/CustomerApi/api"
 
+var ErrAuth = errors.New("authorization error")
+
 // Eloverblik implements the interfaces for getting tariffs
 type Eloverblik struct {
 	authToken    []byte
 	refreshToken []byte
 	mid          string
 	ft           FullTariffs
+	rg bool
 }
 
 // RequestData is the meetring data (mid) sent to eloverblik for extracting tariffs
@@ -42,7 +47,7 @@ type FullTariffs struct {
 				Owner          string      `json:"owner"`
 				ValidFromDate  string      `json:"validFromDate"`
 				ValidToDate    interface{} `json:"validToDate"`
-				Price          int         `json:"price"`
+				Price          float64     `json:"price"`
 				Quantity       int         `json:"quantity"`
 			} `json:"subscriptions"`
 			Fees    []interface{} `json:"fees"`
@@ -67,6 +72,11 @@ type FullTariffs struct {
 		Id            string      `json:"id"`
 		StackTrace    interface{} `json:"stackTrace"`
 	} `json:"result"`
+	ts time.Time `json:"-"`
+}
+
+func (ft FullTariffs) UpdatedAt() time.Time {
+	return ft.ts
 }
 
 func (e *Eloverblik) Authenticate(token []byte) error {
@@ -97,8 +107,17 @@ func (e *Eloverblik) Query() (interface{}, error) {
 	}
 	e.ft = FullTariffs{}
 	if err := e.ft.query(e.refreshToken, e.mid); err != nil {
+		if errors.Is(err, ErrAuth) && !e.rg {
+			if err := e.ExecAuth(); err != nil {
+				return nil, err
+			}
+			// set recurse guard
+			e.rg = true
+			return e.Query()
+		}
 		return nil, err
 	}
+	e.ft.ts = time.Now()
 	return e.ft, nil
 }
 
@@ -181,6 +200,9 @@ func (ft *FullTariffs) query(token []byte, mid string) error {
 	if resp.StatusCode != http.StatusOK {
 		fmt.Println(resp.Status)
 		fmt.Println(string(response))
+	}
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		return ErrAuth
 	}
 
 	if err := json.Unmarshal(response, &ft); err != nil {

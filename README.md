@@ -20,6 +20,11 @@ This assumes, of course, that your power plan has by the hour pricing. I have
 no idea what happens if you don't, but I'd think you'd just get a list of
 identical data :)
 
+## Example REST server
+
+There's also an example of a bare bones REST server in the `server` directory. Check the code there to see how it works,
+endpointsn (there's one) and such.
+
 ### Prerequisites
 
 Go to https://eloverblik.dk, and log in with NemID. Obtain an **API Token** from their web
