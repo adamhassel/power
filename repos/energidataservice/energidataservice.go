@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/adamhassel/power/entities"
+	"github.com/rickar/cal/v2"
+	"github.com/rickar/cal/v2/dk"
 )
 
 const dataServiceUrl = "https://data-api.energidataservice.dk/v1/graphql"
@@ -123,19 +125,11 @@ func (p *Prices) fixupDKK(a area) error {
 		earliest := p.Data.Elspotprices[0].HourUTC
 
 		var target time.Time
-		// Check if we're a saturday or a sunday, and find Friday @ 2300 local
-		switch earliest.Weekday() {
-		case time.Monday:
-			target = earliest.Add(-72 * time.Hour)
-		case time.Sunday:
-			target = earliest.Add(-48 * time.Hour)
-		case time.Saturday:
-			target = earliest.Add(-24 * time.Hour)
-		}
-		if target.Weekday() != time.Friday {
-			return errors.New("Not friday??")
-		}
-		// fetch the last price of the friday, set time to 2300 local
+		// Check if we're a non-working day, and find Previsou workday @ 2300 local
+		c := cal.NewBusinessCalendar()
+		c.Calendar.AddHoliday(dk.Holidays...)
+		target = prevWorkDay(c, earliest)
+		// fetch the last price of the workday, set time to 2300 local
 		target = time.Date(target.Year(), target.Month(), target.Day(), 23, 0, 0, 0, earliest.Location())
 		var rateprice Prices
 		if err := rateprice.getRawSpotPrices(target, target.Add(time.Hour), a); err != nil {
@@ -160,6 +154,18 @@ func (p *Prices) fixupDKK(a area) error {
 		}
 	}
 	return nil
+}
+
+func prevWorkDay(c *cal.BusinessCalendar, date time.Time) time.Time {
+	t := date
+	if date.Before(c.WorkdayStart(date)) {
+		t = t.Add(-24 * time.Hour)
+	}
+
+	for !c.IsWorkday(t) {
+		t = t.Add(-24 * time.Hour)
+	}
+	return c.WorkdayStart(t)
 }
 
 func makeSpotPriceQuery(start, end time.Time, a area) string {
