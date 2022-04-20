@@ -32,6 +32,8 @@ interface, and copy that to the config file (check `power.conf.example`). While
 you're there, note your **measurement point ID**, an 18-digit number identifying
 your power meter, in the same config file.
 
+If you have more than one meter and/or is a power producer (like, if you have solar cells or a windmill, or whatever), results are somewhat unpredictable. Tariffs are tied to a specific metering point, and depending on wether that's a consumption or production point, tariffs vary. So if that's the case, find out which meter is your main consumption meter and use that. And even then, results might be unpredictable. I've seen configurations with multiple consumption meters each having different tariffs attached... Also, if you have reduced power tax for whatever reason (e.g. electric heating), I don't know what'll happen (but prices will probably be somewhat off).
+
 ### Running
 
 The app accepts a `-c` option, which will tell it which config file to read.
