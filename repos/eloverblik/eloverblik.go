@@ -25,7 +25,7 @@ type Eloverblik struct {
 	refreshToken []byte
 	mid          string
 	ft           FullTariffs
-	rg bool
+	rg           bool
 }
 
 // RequestData is the meetring data (mid) sent to eloverblik for extracting tariffs
@@ -66,7 +66,7 @@ type FullTariffs struct {
 			} `json:"tariffs"`
 		} `json:"result"`
 		Success       bool        `json:"success"`
-		ErrorCode     string      `json:"errorCode"`
+		ErrorCode     int         `json:"errorCode"`
 		ErrorCodeEnum string      `json:"errorCodeEnum"`
 		ErrorText     string      `json:"errorText"`
 		Id            string      `json:"id"`
@@ -208,7 +208,6 @@ func (ft *FullTariffs) query(token []byte, mid string) error {
 	if err := json.Unmarshal(response, &ft); err != nil {
 		return err
 	}
-
 	return nil
 }
 

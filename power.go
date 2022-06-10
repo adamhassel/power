@@ -37,7 +37,7 @@ func Summarize(spot interfaces.SpotPricer, t interfaces.Indexer) FullPrices {
 }
 
 // Prices fetches price data from `from` to `to`, for the given `mid` using the `token` for auth.
-func Prices(from, to time.Time, mid, token string) (FullPrices, error){
+func Prices(from, to time.Time, mid, token string) (FullPrices, error) {
 	var e energidataservice.EnergiDataService
 	e.Area(energidataservice.AreaDKEast)
 	e.Timer(from, to)
@@ -54,6 +54,7 @@ func Prices(from, to time.Time, mid, token string) (FullPrices, error){
 		return nil, err
 	}
 	ft, err := t.Query()
+
 	if err != nil {
 		return nil, err
 	}
