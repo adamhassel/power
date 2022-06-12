@@ -21,6 +21,7 @@ type Config struct {
 	mid  string `toml:"mid"`
 }
 
+
 var conf Config
 
 func init() {
