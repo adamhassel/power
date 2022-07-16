@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -112,10 +113,6 @@ func (e *Eloverblik) Query() (interface{}, error) {
 	e.ft = FullTariffs{}
 	if err := e.ft.query(e.refreshToken, e.mid); err != nil {
 		if errors.Is(err, ErrAuth) && !e.rg {
-			//if err := e.ExecAuth(); err != nil {
-			//				return nil, err
-			//		}
-			// set recurse guard
 			e.refreshToken = nil
 			e.rg = true
 			return e.Query()
@@ -191,6 +188,8 @@ func (ft *FullTariffs) query(token []byte, mid string) error {
 		Body:   ioutil.NopCloser(strings.NewReader(makeMeteringPointBody(mid))),
 	}
 	c := http.Client{}
+	out, _ := httputil.DumpRequest(r, true)
+	fmt.Println(string(out))
 	resp, err := c.Do(r)
 	if err != nil {
 		return err
@@ -227,6 +226,8 @@ func getRefreshToken(token []byte) (string, error) {
 	}
 
 	c := http.Client{}
+	out, _ := httputil.DumpRequest(r, true)
+	fmt.Println(string(out))
 	resp, err := c.Do(r)
 	if err != nil {
 		return "", err

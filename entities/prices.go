@@ -45,3 +45,12 @@ func (t *pTime) UnmarshalJSON(b []byte) (err error) {
 	*t = pTime(o)
 	return
 }
+
+// InWindow returns true if fb is inside the window from - to
+func (fp FullPrice) InWindow(from, to time.Time) bool {
+	if to.Before(from) {
+		return false
+	}
+	// if fp.ValidFrom >= from and fp.ValidTo <= to
+	return !fp.ValidFrom.Before(from) && !fp.ValidTo.After(to)
+}

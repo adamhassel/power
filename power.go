@@ -1,13 +1,15 @@
 package power
 
 import (
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/adamhassel/power/entities"
 	"github.com/adamhassel/power/interfaces"
 	"github.com/adamhassel/power/repos/eloverblik"
 	"github.com/adamhassel/power/repos/energidataservice"
+
+	"github.com/adamhassel/errors"
 )
 
 type FullPrices struct {
@@ -18,18 +20,22 @@ type FullPrices struct {
 
 var FullPricesCached FullPrices
 
-// InRange returns true if fb contains data in the range from - to
-func (fb FullPrices) InRange(from, to time.Time) bool {
-	return !(fb.From.Before(from) && fb.To.After(to))
+// InRange returns true if fb contains data in the full range from - to
+func (fp FullPrices) InRange(from, to time.Time) bool {
+	if to.Before(from) {
+		return false
+	}
+	return !fp.From.After(from) && !fp.To.Before(to)
 }
 
 // Range returns the subset of fp that are between from and to. If out of range, returns empty
 func (fp FullPrices) Range(from, to time.Time) FullPrices {
 	var rv FullPrices
-	var fset bool
+	var fset bool // Flag to signal that "From" has been set in the return value.
 	rv.Contents = make([]entities.FullPrice, 0)
 	for _, f := range fp.Contents {
-		if f.ValidFrom.Before(from) || f.ValidFrom.After(to) {
+		// if this entry is not within the range specified, skip it
+		if !f.InWindow(from, to) {
 			continue
 		}
 		if !fset && rv.From.Before(f.ValidFrom) {
@@ -86,9 +92,11 @@ func Summarize(spot interfaces.SpotPricer, t interfaces.Indexer) FullPrices {
 	}
 }
 
+var ErrEloverblik = errors.New("error getting data from eloverblik.dk")
+
 // Prices fetches price data from `from` and as far ahead as they're available, for the given `mid` using the
 // `token` for auth. If 'IgnoreMissingTariffs' is true, just return spot prices
-// without them, if they can't be fetched.
+// without tariffs, if they can't be fetched.
 func Prices(from, to time.Time, c interfaces.Configurator, ignoreMissingTariffs bool) ([]entities.FullPrice, error) {
 	// return cached prices if available
 	if FullPricesCached.InRange(from, to) {
@@ -96,19 +104,19 @@ func Prices(from, to time.Time, c interfaces.Configurator, ignoreMissingTariffs 
 	}
 	var e energidataservice.EnergiDataService
 	e.Area(energidataservice.AreaDKEast)
-	// always fetch until tomorrow at midnight. If they're not redy yet, the service will return as much as is can.
+	// always fetch until tomorrow at midnight. If they're not ready yet, the service will return as much as is can.
 	end := time.Now().Truncate(24 * time.Hour).Add(48 * time.Hour)
 	e.Timer(from, end)
 	p, err := e.Query()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, ErrEloverblik)
 	}
 
 	// refresh tariffs once a day
 	if time.Now().Sub(eloverblik.FullTariffsCached.UpdatedAt()) > 24*time.Hour {
-		if err := eloverblik.PreloadTariffs(nil); err != nil {
+		if err := eloverblik.PreloadTariffs(c); err != nil {
 			if ignoreMissingTariffs {
-				fmt.Printf("encountered error %s, but ignoring", err)
+				log.Printf("encountered error %s, but ignoring", err)
 				err = nil
 			} else {
 				return nil, err
