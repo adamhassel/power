@@ -32,8 +32,7 @@ func main() {
 		log.Fatal("MID or Token invalid")
 	}
 
-
-	prices, err := power.Prices(time.Now(), time.Now().Add(time.Duration(noOfHours)*time.Hour), conf.MID(), conf.Token())
+	prices, err := power.Prices(time.Now(), time.Now().Add(time.Duration(noOfHours)*time.Hour), conf, true)
 	if err != nil {
 		log.Fatal(err)
 	}

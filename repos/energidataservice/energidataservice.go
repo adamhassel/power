@@ -1,12 +1,12 @@
 package energidataservice
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"time"
 
 	"github.com/adamhassel/power/entities"
@@ -14,8 +14,10 @@ import (
 	"github.com/rickar/cal/v2/dk"
 )
 
-const dataServiceUrl = "https://data-api.energidataservice.dk/v1/graphql"
-const queryTemplate = `{"operationName":"Dataset","variables":{},"query":"query Dataset {\n  elspotprices(\n    where: {HourDK: {_gte: \"%s\", _lt: \"%s\"}, PriceArea: {_eq: \"%s\"}}\n    order_by: {HourUTC: asc}\n    limit: %d\n    offset: %d\n  ) {\n    HourUTC\n    HourDK\n    PriceArea\n    SpotPriceDKK\n    SpotPriceEUR\n    __typename\n  }\n}\n"}`
+const dataServiceUrl = "https://api.energidataservice.dk/dataset/elspotprices"
+
+//const queryTemplate = `{"operationName":"Dataset","variables":{},"query":"query Dataset {\n  elspotprices(\n    where: {HourDK: {_gte: \"%s\", _lt: \"%s\"}, PriceArea: {_eq: \"%s\"}}\n    order_by: {HourUTC: asc}\n    limit: %d\n    offset: %d\n  ) {\n    HourUTC\n    HourDK\n    PriceArea\n    SpotPriceDKK\n    SpotPriceEUR\n    __typename\n  }\n}\n"}`
+const queryTemplate = `start=%s&end=%s&filter={"PriceArea":"%s"}&limit=%d&offset=%d&sort=HourUTC`
 
 type area string
 
@@ -39,13 +41,11 @@ type EnergiDataService struct {
 
 // Prices is the data returned from  energidataservice, containing raw power prices
 type Prices struct {
-	Data struct {
-		Elspotprices []entities.Elspotprice `json:"elspotprices"`
-	} `json:"data"`
+	Elspotprices []entities.Elspotprice `json:"records"`
 }
 
 func (p Prices) SpotPrices() []entities.Elspotprice {
-	return p.Data.Elspotprices
+	return p.Elspotprices
 }
 
 func (e *EnergiDataService) Area(a area) {
@@ -60,10 +60,10 @@ func (e *EnergiDataService) Timer(from, to time.Time) {
 func (e *EnergiDataService) Query() (interface{}, error) {
 	e.p = Prices{}
 	if e.from.IsZero() {
-		e.from = time.Now()
+		e.from = time.Now().Truncate(24 * time.Hour)
 	}
 	if e.to.IsZero() || e.to.Before(e.from) {
-		e.to = e.from.Add(12 * time.Hour)
+		e.to = e.from.Add(48 * time.Hour)
 	}
 	if err := e.p.query(e.from, e.to, e.area); err != nil {
 		return nil, err
@@ -79,19 +79,27 @@ func (p *Prices) query(from, to time.Time, a area) error {
 }
 
 func (p *Prices) getRawSpotPrices(from, to time.Time, a area) error {
-	body := makeSpotPriceQuery(from, to, a)
+	params := makeSpotPriceQuery(from, to, a)
+	u := dataServiceUrl + "?" + params
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return err
+	}
+	out, _ := httputil.DumpRequest(req, true)
+	fmt.Println(string(out))
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 
-	resp, err := http.Post(dataServiceUrl, "application/json", bytes.NewBuffer([]byte(body)))
+	if err != nil {
+		return err
+	}
+	response, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.Status)
-	}
-	response, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		return fmt.Errorf("energiDataService returned %s, '%s'", resp.Status, response)
 	}
 
 	return json.Unmarshal(response, &p)
@@ -106,7 +114,7 @@ func (p *Prices) fixupDKK(a area) error {
 	// find out if there are any missing DKK..
 	var latestEUR, latestDKK float64
 	emptyDKK := false
-	for _, sp := range p.Data.Elspotprices {
+	for _, sp := range p.Elspotprices {
 		if sp.SpotPriceDKK == nil {
 			emptyDKK = true
 		} else if *sp.SpotPriceDKK != 0 && sp.SpotPriceEUR != 0 {
@@ -122,35 +130,35 @@ func (p *Prices) fixupDKK(a area) error {
 	// if we already have prices (like, a friday), use that
 	if latestEUR == 0 && latestDKK == 0 {
 		// We know the first price is the earliest, since that's how it's sorted
-		earliest := p.Data.Elspotprices[0].HourUTC
+		earliest := p.Elspotprices[0].HourUTC
 
 		var target time.Time
 		// Check if we're a non-working day, and find Previsou workday @ 2300 local
 		c := cal.NewBusinessCalendar()
 		c.Calendar.AddHoliday(dk.Holidays...)
-		target = prevWorkDay(c, earliest)
+		target = prevWorkDay(c, time.Time(earliest))
 		// fetch the last price of the workday, set time to 2300 local
-		target = time.Date(target.Year(), target.Month(), target.Day(), 23, 0, 0, 0, earliest.Location())
+		target = time.Date(target.Year(), target.Month(), target.Day(), 23, 0, 0, 0, time.Time(earliest).Location())
 		var rateprice Prices
 		if err := rateprice.getRawSpotPrices(target, target.Add(time.Hour), a); err != nil {
 			return err
 		}
-		if rateprice.Data.Elspotprices[0].SpotPriceDKK == nil {
+		if rateprice.Elspotprices[0].SpotPriceDKK == nil {
 			return errors.New("DKK price was nil")
 		}
-		latestDKK = *rateprice.Data.Elspotprices[0].SpotPriceDKK
-		latestEUR = rateprice.Data.Elspotprices[0].SpotPriceEUR
+		latestDKK = *rateprice.Elspotprices[0].SpotPriceDKK
+		latestEUR = rateprice.Elspotprices[0].SpotPriceEUR
 	}
 
 	rate := latestDKK / latestEUR
 
 	// finally, fixup prices where appropriate
-	for i, price := range p.Data.Elspotprices {
+	for i, price := range p.Elspotprices {
 		if price.SpotPriceDKK == nil {
-			p.Data.Elspotprices[i].SpotPriceDKK = new(float64)
-			*p.Data.Elspotprices[i].SpotPriceDKK = price.SpotPriceEUR * rate
-			p.Data.Elspotprices[i].DKKEstimated = true
-			p.Data.Elspotprices[i].EstimatedRate = rate
+			p.Elspotprices[i].SpotPriceDKK = new(float64)
+			*p.Elspotprices[i].SpotPriceDKK = price.SpotPriceEUR * rate
+			p.Elspotprices[i].DKKEstimated = true
+			p.Elspotprices[i].EstimatedRate = rate
 		}
 	}
 	return nil
@@ -172,5 +180,5 @@ func makeSpotPriceQuery(start, end time.Time, a area) string {
 	if a == "" {
 		a = AreaDKEast
 	}
-	return fmt.Sprintf(queryTemplate, start.Local().Format("2006-01-02T15:04:05"), end.Local().Format("2006-01-02T15:04:05"), a, defaultLimit, defaultOffset)
+	return fmt.Sprintf(queryTemplate, start.Local().Format("2006-01-02T15:04"), end.Local().Format("2006-01-02T15:04"), a, defaultLimit, defaultOffset)
 }

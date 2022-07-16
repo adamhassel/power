@@ -17,12 +17,31 @@ type FullPrice struct {
 
 // Elspotprice is the raw per price data
 type Elspotprice struct {
-	HourUTC       time.Time `json:"HourUTC"`
-	HourDK        string    `json:"HourDK"`
-	PriceArea     string    `json:"PriceArea"`
-	SpotPriceDKK  *float64  `json:"SpotPriceDKK"`
-	DKKEstimated  bool      `json:"dkk_estimated"`
-	EstimatedRate float64   `json:"rate,omitempty"`
-	SpotPriceEUR  float64   `json:"SpotPriceEUR"`
-	Typename      string    `json:"__typename"`
+	HourUTC       pTime    `json:"HourUTC"`
+	HourDK        pTime    `json:"HourDK"`
+	PriceArea     string   `json:"PriceArea"`
+	SpotPriceDKK  *float64 `json:"SpotPriceDKK"`
+	DKKEstimated  bool     `json:"dkk_estimated"`
+	EstimatedRate float64  `json:"rate,omitempty"`
+	SpotPriceEUR  float64  `json:"SpotPriceEUR"`
+	Typename      string   `json:"__typename"`
+}
+
+type pTime time.Time
+
+func (t *pTime) UnmarshalJSON(b []byte) (err error) {
+	s := string(b)
+
+	// Get rid of the quotes "" around the value.
+	// A second option would be to include them
+	// in the date format string instead, like so below:
+	//   time.Parse(`"`+time.RFC3339Nano+`"`, s)
+	s = s[1 : len(s)-1]
+
+	o, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		o, err = time.Parse("2006-01-02T15:04:05", s)
+	}
+	*t = pTime(o)
+	return
 }

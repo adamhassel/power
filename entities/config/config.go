@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 
 	"github.com/BurntSushi/toml"
+	"github.com/adamhassel/power/interfaces"
 )
 
 // An MID MUST be 18 digits
@@ -13,14 +14,13 @@ const midLength = 18
 
 type confdata struct {
 	Token string `toml:"token"`
-	MID  string `toml:"mid"`
+	MID   string `toml:"mid"`
 }
 
 type Config struct {
 	token string `toml:"token"`
-	mid  string `toml:"mid"`
+	mid   string `toml:"mid"`
 }
-
 
 var conf Config
 
@@ -64,4 +64,10 @@ func (c *Config) Load(filename string) error {
 		return errors.New("empty token")
 	}
 	return nil
+}
+
+// set will save the values in `in` in the global config
+func Set(in interfaces.Configurator) {
+	conf.token = in.Token()
+	conf.mid = in.MID()
 }

@@ -12,12 +12,16 @@ import (
 	"time"
 
 	"github.com/adamhassel/power/entities"
+	"github.com/adamhassel/power/entities/config"
+	"github.com/adamhassel/power/interfaces"
 	"github.com/tidwall/gjson"
 )
 
 const elOverblikUrl = "https://api.eloverblik.dk/CustomerApi/api"
 
 var ErrAuth = errors.New("authorization error")
+
+var FullTariffsCached FullTariffs
 
 // Eloverblik implements the interfaces for getting tariffs
 type Eloverblik struct {
@@ -108,10 +112,11 @@ func (e *Eloverblik) Query() (interface{}, error) {
 	e.ft = FullTariffs{}
 	if err := e.ft.query(e.refreshToken, e.mid); err != nil {
 		if errors.Is(err, ErrAuth) && !e.rg {
-			if err := e.ExecAuth(); err != nil {
-				return nil, err
-			}
+			//if err := e.ExecAuth(); err != nil {
+			//				return nil, err
+			//		}
 			// set recurse guard
+			e.refreshToken = nil
 			e.rg = true
 			return e.Query()
 		}
@@ -212,7 +217,7 @@ func (ft *FullTariffs) query(token []byte, mid string) error {
 }
 
 func getRefreshToken(token []byte) (string, error) {
-	u, _ := url.Parse(elOverblikUrl + "/Token")
+	u, _ := url.Parse(elOverblikUrl + "/token")
 	var h = make(http.Header)
 	h.Add("Authorization", fmt.Sprintf("Bearer %s", string(token)))
 	r := &http.Request{
@@ -249,4 +254,27 @@ func makeMeteringPointBody(mid string) string {
 		panic(err)
 	}
 	return string(rv)
+}
+
+func PreloadTariffs(c interfaces.Configurator) error {
+	var t Eloverblik
+	if c == nil {
+		c = config.GetConf()
+	}
+	if err := t.Authenticate([]byte(c.Token())); err != nil {
+		return err
+	}
+	if err := t.Identify([]byte(c.MID())); err != nil {
+		return err
+	}
+	ft, err := t.Query()
+	if err != nil {
+		return err
+	}
+	var ok bool
+	FullTariffsCached, ok = ft.(FullTariffs)
+	if !ok {
+		return errors.New("return from eloverblik were not in expected format. This is weird")
+	}
+	return nil
 }

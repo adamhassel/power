@@ -1,6 +1,7 @@
 package power
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/adamhassel/power/entities"
@@ -9,22 +10,59 @@ import (
 	"github.com/adamhassel/power/repos/energidataservice"
 )
 
-type FullPrices []entities.FullPrice
+type FullPrices struct {
+	Contents []entities.FullPrice
+	From     time.Time
+	To       time.Time
+}
+
+var FullPricesCached FullPrices
+
+// InRange returns true if fb contains data in the range from - to
+func (fb FullPrices) InRange(from, to time.Time) bool {
+	return !(fb.From.Before(from) && fb.To.After(to))
+}
+
+// Range returns the subset of fp that are between from and to. If out of range, returns empty
+func (fp FullPrices) Range(from, to time.Time) FullPrices {
+	var rv FullPrices
+	var fset bool
+	rv.Contents = make([]entities.FullPrice, 0)
+	for _, f := range fp.Contents {
+		if f.ValidFrom.Before(from) || f.ValidFrom.After(to) {
+			continue
+		}
+		if !fset && rv.From.Before(f.ValidFrom) {
+			rv.From = f.ValidFrom
+			fset = true
+		}
+		if rv.To.Before(f.ValidTo) {
+			rv.To = f.ValidTo
+		}
+		rv.Contents = append(rv.Contents, f)
+	}
+	return rv
+}
 
 // Summarize will combine the information in spot and t into a list of FullPrices
 func Summarize(spot interfaces.SpotPricer, t interfaces.Indexer) FullPrices {
 	var fp = make([]entities.FullPrice, len(spot.SpotPrices()))
 	idx := t.Index()
+	var (
+		to   time.Time
+		from time.Time = time.Now().Add(365 * 24 * time.Hour)
+	)
+	var fromset bool
 	for i, p := range spot.SpotPrices() {
-		h := p.HourUTC.Local().Hour()
+		h := time.Time(p.HourUTC).Local().Hour()
 		taxes := idx.AtPos(h).Taxes()
 		taxesSubTotal := taxes.Total()
 		// Price data is per MWh, so let's make that per kWh
 		rawPrice := *p.SpotPriceDKK / 1000
 		fp[i] = entities.FullPrice{
 			Taxes:         taxes,
-			ValidFrom:     p.HourUTC.Local(),
-			ValidTo:       p.HourUTC.Add(time.Hour).Local(),
+			ValidFrom:     time.Time(p.HourUTC).Local(),
+			ValidTo:       time.Time(p.HourUTC).Add(time.Hour).Local(),
 			Estimated:     p.DKKEstimated,
 			EstimatedRate: p.EstimatedRate,
 			RawPrice:      rawPrice,
@@ -32,33 +70,55 @@ func Summarize(spot interfaces.SpotPricer, t interfaces.Indexer) FullPrices {
 			Total:         taxesSubTotal + rawPrice,
 			TotalIncVAT:   (taxesSubTotal + rawPrice) * 1.25,
 		}
+		if !fromset && fp[i].ValidFrom.Before(from) {
+			from = fp[i].ValidFrom
+			fromset = true
+		}
+		if fp[i].ValidTo.After(to) {
+			to = fp[i].ValidTo
+		}
 	}
-	return fp
+
+	return FullPrices{
+		Contents: fp,
+		From:     from,
+		To:       to,
+	}
 }
 
-// Prices fetches price data from `from` to `to`, for the given `mid` using the `token` for auth.
-func Prices(from, to time.Time, mid, token string) (FullPrices, error) {
+// Prices fetches price data from `from` and as far ahead as they're available, for the given `mid` using the
+// `token` for auth. If 'IgnoreMissingTariffs' is true, just return spot prices
+// without them, if they can't be fetched.
+func Prices(from, to time.Time, c interfaces.Configurator, ignoreMissingTariffs bool) ([]entities.FullPrice, error) {
+	// return cached prices if available
+	if FullPricesCached.InRange(from, to) {
+		return FullPricesCached.Range(from, to).Contents, nil
+	}
 	var e energidataservice.EnergiDataService
 	e.Area(energidataservice.AreaDKEast)
-	e.Timer(from, to)
+	// always fetch until tomorrow at midnight. If they're not redy yet, the service will return as much as is can.
+	end := time.Now().Truncate(24 * time.Hour).Add(48 * time.Hour)
+	e.Timer(from, end)
 	p, err := e.Query()
 	if err != nil {
 		return nil, err
 	}
 
-	var t eloverblik.Eloverblik
-	if err := t.Authenticate([]byte(token)); err != nil {
-		return nil, err
+	// refresh tariffs once a day
+	if time.Now().Sub(eloverblik.FullTariffsCached.UpdatedAt()) > 24*time.Hour {
+		if err := eloverblik.PreloadTariffs(nil); err != nil {
+			if ignoreMissingTariffs {
+				fmt.Printf("encountered error %s, but ignoring", err)
+				err = nil
+			} else {
+				return nil, err
+			}
+		}
 	}
-	if err := t.Identify([]byte(mid)); err != nil {
-		return nil, err
-	}
-	ft, err := t.Query()
-
 	if err != nil {
 		return nil, err
 	}
 
-	combined := Summarize(p.(energidataservice.Prices), ft.(eloverblik.FullTariffs))
-	return combined, nil
+	FullPricesCached = Summarize(p.(energidataservice.Prices), eloverblik.FullTariffsCached)
+	return FullPricesCached.Range(from, to).Contents, nil
 }

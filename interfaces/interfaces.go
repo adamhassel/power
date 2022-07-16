@@ -35,3 +35,8 @@ type AtPoser interface {
 type SpotPricer interface {
 	SpotPrices() []entities.Elspotprice
 }
+
+type Configurator interface {
+	Token() string
+	MID() string
+}
