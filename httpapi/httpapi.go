@@ -73,18 +73,13 @@ func GetPowerPrices(c interfaces.Configurator, ignoreMissingTariffs bool) func(w
 				Price  string `json:"price"`
 			}
 			o := make([]Simple, len(p))
-			var s bool
 			for i, p := range p {
 				var suffix string
 				if len(p.Taxes) == 0 {
 					suffix = "*"
-					s = true
 				}
 				o[i].Period = fmt.Sprintf("%s - %s", p.ValidFrom.Format("15:04"), p.ValidTo.Format("15:04"))
 				o[i].Price = fmt.Sprintf("%0.2f%s kr.", p.TotalIncVAT, suffix)
-			}
-			if s {
-				o = append(o, Simple{"Note *", "Pris uden afgifter/tariffer, men incl moms"})
 			}
 			renderJson(w, o)
 			return
