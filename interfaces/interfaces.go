@@ -3,7 +3,11 @@
 // the code so far, so it may go away at some point...
 package interfaces
 
-import "github.com/adamhassel/power/entities"
+import (
+	"time"
+
+	"github.com/adamhassel/power/entities"
+)
 
 // Queryer will query in a well defined manner
 type Queryer interface {
@@ -34,6 +38,11 @@ type AtPoser interface {
 
 type SpotPricer interface {
 	SpotPrices() []entities.Elspotprice
+}
+
+// Pricer is an interface that returns a price for a given hour
+type Pricer interface {
+	Price(time.Time) float64
 }
 
 type Configurator interface {

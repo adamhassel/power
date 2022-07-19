@@ -28,6 +28,17 @@ func (fp FullPrices) InRange(from, to time.Time) bool {
 	return !fp.From.After(from) && !fp.To.Before(to)
 }
 
+// Price implements the Pricer interface
+func (fp FullPrices) Price(t time.Time) float64 {
+	h := t.Truncate(time.Hour)
+	for _, p := range fp.Contents {
+		if p.ValidFrom.Equal(h) {
+			return p.TotalIncVAT
+		}
+	}
+	return 0.0
+}
+
 // Range returns the subset of fp that are between from and to. If out of range, returns empty
 func (fp FullPrices) Range(from, to time.Time) FullPrices {
 	var rv FullPrices

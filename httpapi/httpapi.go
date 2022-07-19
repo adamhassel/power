@@ -49,8 +49,8 @@ func GetPowerPrices(c interfaces.Configurator, ignoreMissingTariffs bool) func(w
 				}
 			}
 		}
-
-		p, err := power.Prices(time.Now(), time.Now().Add(time.Duration(h)*time.Hour), c, ignoreMissingTariffs)
+		now := time.Now().Truncate(time.Hour)
+		p, err := power.Prices(now, now.Add(time.Duration(h)*time.Hour), c, ignoreMissingTariffs)
 
 		//p, err := getSpotPrices(h)
 		if err != nil {
